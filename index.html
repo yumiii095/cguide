@@ -157,8 +157,8 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-bold mb-1">版本號預覽：</label>
-                    <input type="text" id="modal-version" class="w-full border p-2 rounded text-gray-800 bg-gray-100 font-mono" readonly="" contenteditable="false">
+                    <label class="block text-sm font-bold mb-1">版本號（可手動修改）：</label>
+                    <input type="text" id="modal-version" class="w-full border p-2 rounded text-gray-800 bg-white font-mono" contenteditable="false">
                 </div>
                 <div>
                     <label class="block text-sm font-bold mb-1">更新簡述 (標題)：</label>
@@ -511,18 +511,21 @@
 
     <footer class="bg-gray-900 text-white py-12 text-center mt-20 edit-ignore" contenteditable="false">
         <p class="font-bold text-xl text-blue-400">Cobblemon 方可夢樂園</p>
-        <p class="text-gray-500 text-sm mt-2">© 2026 Cobblemon 方可夢樂園</p>
+        <p class="text-gray-500 text-sm mt-2">本站由玩家自發性維護，非官方（伺服器管理團隊）直接運營。</p>
     </footer>
 
     <script>
         let COMMANDS_DATA = [];
         let ALL_DATA = [];
-function toggleDarkMode() {
+
+        // ── 深色模式 ──────────────────────────────────────────────
+        function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            document.getElementById('mode-label').innerText = isDark ? '深色' : '淺色';
+            document.getElementById('mode-label').innerText =
+                document.body.classList.contains('dark-mode') ? '深色' : '淺色';
         }
 
+        // ── 初始化攻略區 ──────────────────────────────────────────
         function initStrategies() {
             const container = document.getElementById('strategy-container');
             if (!container || !window.STRATEGIES_DATA) return;
@@ -536,12 +539,15 @@ function toggleDarkMode() {
             });
         }
 
+        // ── 初始化指令集 ──────────────────────────────────────────
         function initCommands() {
             const container = document.getElementById('accordion-container');
             if (!container) return;
             container.innerHTML = '';
             COMMANDS_DATA.forEach((cat) => {
-                let itemsHtml = cat.isResidence ? `<div class="mb-4 p-3 bg-orange-50 border border-orange-200 text-sm font-bold text-orange-800">🛠️ 工具：木鋤頭<br>🖱️ 左鍵點擊：第 1 點 / 右鍵點擊：第 2 點</div>` : '';
+                let itemsHtml = cat.isResidence
+                    ? `<div class="mb-4 p-3 bg-orange-50 border border-orange-200 text-sm font-bold text-orange-800">🛠️ 工具：木鋤頭<br>🖱️ 左鍵點擊：第 1 點 / 右鍵點擊：第 2 點</div>`
+                    : '';
                 cat.items.forEach(item => {
                     itemsHtml += `<div class="cmd-box" data-cmd="${item.cmd.toLowerCase()}"><span class="cmd-text">${item.cmd}</span><span class="cmd-desc">${item.desc}</span><button class="copy-btn" contenteditable="false" onclick="copyCmd(this)">複製</button></div>`;
                 });
@@ -549,6 +555,7 @@ function toggleDarkMode() {
             });
         }
 
+        // ── 搜尋 ──────────────────────────────────────────────────
         function escapeHtml(str) {
             return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
@@ -557,17 +564,19 @@ function toggleDarkMode() {
             const query = input.value.toLowerCase().trim();
             const suggestBox = document.getElementById(suggestBoxId);
             if (!query) { suggestBox.classList.add('hidden'); return; }
-
             const results = ALL_DATA.filter(item =>
                 item.keywords.toLowerCase().includes(query) ||
                 item.title.toLowerCase().includes(query) ||
                 item.desc.toLowerCase().includes(query)
             ).slice(0, 8);
-
             if (results.length > 0) {
-                suggestBox.innerHTML = results.map(res => `<div class="suggestion-item" onclick="navigateToResult('${escapeHtml(res.type)}', '${escapeHtml(res.target)}', ${!!res.isCommand})"><div class="text-[10px] uppercase font-bold text-blue-400">${escapeHtml(res.type)}</div><div class="font-bold text-gray-800">${escapeHtml(res.title)}</div><div class="text-xs text-gray-500">${escapeHtml(res.desc)}</div></div>`).join('');
+                suggestBox.innerHTML = results.map(res =>
+                    `<div class="suggestion-item" onclick="navigateToResult('${escapeHtml(res.type)}','${escapeHtml(res.target)}',${!!res.isCommand})"><div class="text-[10px] uppercase font-bold text-blue-400">${escapeHtml(res.type)}</div><div class="font-bold text-gray-800">${escapeHtml(res.title)}</div><div class="text-xs text-gray-500">${escapeHtml(res.desc)}</div></div>`
+                ).join('');
                 suggestBox.classList.remove('hidden');
-            } else suggestBox.classList.add('hidden');
+            } else {
+                suggestBox.classList.add('hidden');
+            }
         }
 
         function navigateToResult(page, targetId, isCommand) {
@@ -594,99 +603,133 @@ function toggleDarkMode() {
             }, 300);
         }
 
+        // ── 導覽 ──────────────────────────────────────────────────
         function toggleAccordion(header) { header.closest('.accordion-item').classList.toggle('accordion-active'); }
         function toggleMobileMenu() { document.getElementById('mobile-menu').classList.toggle('open'); }
-        
         function showPage(pageId) {
             document.querySelectorAll('.page-content').forEach(p => p.classList.add('hidden'));
             const target = document.getElementById(pageId + '-page');
             if (target) target.classList.remove('hidden');
-            window.scrollTo(0,0);
+            window.scrollTo(0, 0);
         }
 
+        // ── 編輯模式 ──────────────────────────────────────────────
         let baseVersion = 1.0;
         let faqSortable;
+        let _enterGuard = null;
 
         function toggleEditMode(enable) {
             const body = document.body;
             if (enable) {
                 body.classList.add('editing-active');
-                body.contentEditable = "true";
-                document.querySelectorAll('.edit-ignore, .edit-ui, header, nav, button, kbd, footer, .drag-handle, input, textarea, #confirm-modal, .format-toolbar').forEach(el => {
-                    el.contentEditable = "false";
-                });
-                
+                body.contentEditable = 'true';
+                document.querySelectorAll('.edit-ignore,.edit-ui,header,nav,button,kbd,footer,.drag-handle,input,textarea,#confirm-modal,.format-toolbar')
+                    .forEach(el => { el.contentEditable = 'false'; });
+
                 const faqContainer = document.getElementById('faq-container');
                 if (faqContainer && typeof Sortable !== 'undefined') {
-                    faqSortable = new Sortable(faqContainer, {
-                        animation: 150,
-                        handle: '.drag-handle',
-                        ghostClass: 'sortable-ghost'
-                    });
+                    faqSortable = new Sortable(faqContainer, { animation: 150, handle: '.drag-handle', ghostClass: 'sortable-ghost' });
                 }
 
-                const newsItems = document.querySelectorAll('#news-container h3');
-                if(newsItems.length > 0) {
-                    const match = newsItems[0].innerText.match(/v(\d+(\.\d+)?)/);
-                    if(match) baseVersion = parseFloat(match[1]);
+                const firstNews = document.querySelector('#news-container h3');
+                if (firstNews) {
+                    const m = firstNews.innerText.match(/v(\d+(\.\d+)?)/);
+                    if (m) baseVersion = parseFloat(m[1]);
                 }
                 updateVersionPreview('minor');
+
+                // 攔截標題欄位的 Enter，防止換行破壞排版
+                _enterGuard = (e) => {
+                    if (e.key !== 'Enter') return;
+                    const el = e.target;
+                    if (el.tagName === 'H3' || el.tagName === 'H4' ||
+                        el.classList.contains('accordion-header') ||
+                        el.classList.contains('cmd-text') ||
+                        el.classList.contains('cmd-desc')) {
+                        e.preventDefault();
+                        el.blur();
+                    }
+                };
+                document.addEventListener('keydown', _enterGuard);
+
             } else {
                 body.classList.remove('editing-active');
-                body.contentEditable = "false";
-                if (faqSortable) faqSortable.destroy();
+                body.contentEditable = 'false';
+                if (faqSortable) { faqSortable.destroy(); faqSortable = null; }
+                if (_enterGuard) { document.removeEventListener('keydown', _enterGuard); _enterGuard = null; }
             }
         }
 
-        function applyFormat(command, value = null) {
-            document.execCommand(command, false, value);
-        }
+        function applyFormat(command, value = null) { document.execCommand(command, false, value); }
 
         function insertTip() {
-            const selection = window.getSelection();
-            if (!selection.rangeCount) return;
-            const range = selection.getRangeAt(0);
+            const sel = window.getSelection();
+            if (!sel.rangeCount) return;
             const tip = document.createElement('div');
-            tip.className = "mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-gray-800";
-            tip.innerHTML = "💡 <b>小提醒：</b>在此輸入文字...";
-            range.insertNode(tip);
+            tip.className = 'mt-4 p4 bg-yellow-50 border-l-4 border-yellow-400 text-gray-800';
+            tip.innerHTML = '💡 <b>小提醒：</b>在此輸入文字...';
+            sel.getRangeAt(0).insertNode(tip);
         }
 
         function updateVersionPreview(type) {
-            let nextV;
-            if (type === 'major') {
-                nextV = (Math.floor(baseVersion) + 1).toFixed(1);
-            } else {
-                nextV = (baseVersion + 0.1).toFixed(1);
-            }
-            document.getElementById('modal-version').value = 'v' + nextV;
+            document.getElementById('modal-version').value = 'v' + (
+                type === 'major'
+                    ? (Math.floor(baseVersion) + 1).toFixed(1)
+                    : (baseVersion + 0.1).toFixed(1)
+            );
         }
 
-        function openPublishModal() {
-            document.getElementById('confirm-modal').style.display = 'flex';
+        function openPublishModal() { document.getElementById('confirm-modal').style.display = 'flex'; }
+        function closeModal()       { document.getElementById('confirm-modal').style.display = 'none'; }
+
+        // ── 從 DOM 重建 JSON ───────────────────────────────────────
+        function extractCommandsFromDOM() {
+            return Array.from(document.querySelectorAll('#accordion-container .accordion-item')).flatMap(item => {
+                const header = item.querySelector('.accordion-header');
+                if (!header) return [];
+                const colorMatch = header.className.match(/text-[a-z]+-[0-9]+/);
+                const cat = {
+                    title: header.innerText.trim(),
+                    color: colorMatch ? colorMatch[0] : 'text-blue-900',
+                    items: Array.from(item.querySelectorAll('.cmd-box'))
+                        .map(box => ({
+                            cmd:  box.querySelector('.cmd-text')?.innerText.trim() || '',
+                            desc: box.querySelector('.cmd-desc')?.innerText.trim() || ''
+                        }))
+                        .filter(i => i.cmd)
+                };
+                if (item.querySelector('.bg-orange-50.border.border-orange-200')) cat.isResidence = true;
+                return [cat];
+            });
         }
 
-        function closeModal() {
-            document.getElementById('confirm-modal').style.display = 'none';
+        function extractStrategiesFromDOM() {
+            return Array.from(document.querySelectorAll('#strategy-container > div[id]')).map(div => {
+                const clone = div.cloneNode(true);
+                clone.querySelectorAll('.edit-ui').forEach(el => el.remove());
+                const h3 = clone.querySelector('h3');
+                return { id: div.id, title: h3 ? h3.innerText.trim() : div.id, html: clone.innerHTML.trim() };
+            });
         }
 
+        // ── 儲存並發佈 ────────────────────────────────────────────
         function executeFinalSave() {
-            const summary = document.getElementById('modal-summary').value || "攻略站內容更新";
-            const detail = document.getElementById('modal-detail').value;
-            const targetVersion = document.getElementById('modal-version').value;
-            
-            const dateStr = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-            
-            const container = document.getElementById('news-container');
-            if (container.querySelector('p.italic')) container.innerHTML = '';
+            const summary = document.getElementById('modal-summary').value || '攻略站內容更新';
+            const detail  = document.getElementById('modal-detail').value;
+            const version = document.getElementById('modal-version').value;
+            const dateStr = new Date().toLocaleDateString('zh-TW', {
+                timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit'
+            }).replace(/\//g, '-');
 
-            const newLog = document.createElement('div');
-            newLog.className = "bg-white border-l-4 border-red-500 shadow-md p-6";
-            newLog.innerHTML = `
+            const newsContainer = document.getElementById('news-container');
+            if (newsContainer.querySelector('p.italic')) newsContainer.innerHTML = '';
+            const log = document.createElement('div');
+            log.className = 'bg-white border-l-4 border-red-500 shadow-md p-6';
+            log.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center space-x-2">
                         <span class="bg-red-600 text-white text-xs px-2 py-1 font-bold">系統更新</span>
-                        <h3 class="text-xl font-bold text-blue-900 uppercase">${targetVersion} - ${summary}</h3>
+                        <h3 class="text-xl font-bold text-blue-900 uppercase">${version} - ${summary}</h3>
                     </div>
                     <span class="text-gray-400 text-sm font-bold">${dateStr}</span>
                 </div>
@@ -694,100 +737,122 @@ function toggleDarkMode() {
                     <div class="news-dot !bg-red-500"></div>
                     <p class="text-gray-700 text-sm">${detail}</p>
                 </div>`;
-            
-            container.prepend(newLog);
+            newsContainer.prepend(log);
             closeModal();
             toggleEditMode(false);
-            
-            const fullContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-            const blob = new Blob([fullContent], { type: 'text/html' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'index.html';
-            a.click();
+
+            // 下載更新後的 JSON
+            const jsonBlob = new Blob([JSON.stringify({
+                commands:     extractCommandsFromDOM(),
+                search_index: ALL_DATA,
+                strategies:   extractStrategiesFromDOM()
+            }, null, 2)], { type: 'application/json' });
+            Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(jsonBlob), download: 'cobblemon_data.json'
+            }).click();
+
+            // 延遲 300ms 下載 HTML，避免瀏覽器攔截同時觸發的雙下載
+            setTimeout(() => {
+                Object.assign(document.createElement('a'), {
+                    href: URL.createObjectURL(new Blob(
+                        ['<!DOCTYPE html>\n' + document.documentElement.outerHTML],
+                        { type: 'text/html' }
+                    )),
+                    download: 'index.html'
+                }).click();
+            }, 300);
         }
 
+        // ── 新增區塊 ──────────────────────────────────────────────
         function addNewSection(containerId, type) {
             const container = document.getElementById(containerId);
-            let newEl = document.createElement('div');
-            if(type === 'faq') {
-                newEl.className = "bg-white border shadow-sm p-6 relative";
-                newEl.innerHTML = `<span class="drag-handle edit-ui">☰</span><button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2" onclick="this.parentElement.remove()">[x] 刪除</button><h3 class="text-xl font-bold text-blue-900 mb-4 inline-block">新問題標題</h3><div class="text-gray-700 space-y-2"><p>內容填寫...</p></div>`;
-            } else if(type === 'strategy') {
-                newEl.className = "bg-white border shadow-sm p-8 relative";
-                newEl.innerHTML = `<button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2" onclick="this.parentElement.remove()">[x] 刪除</button><h3 class="text-2xl font-bold text-purple-900 mb-6 flex items-center">新攻略標題</h3><div class="text-gray-700"><p>內容填寫...</p></div>`;
-            } else if(type === 'command') {
-                newEl.className = "bg-white border accordion-item relative";
-                newEl.innerHTML = `<button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2 z-10" onclick="this.parentElement.remove()">[x] 刪除</button><div class="accordion-header p-5 font-bold text-blue-900" onclick="toggleAccordion(this)">新指令群組</div><div class="accordion-content px-5"><div class="cmd-box"><span class="cmd-text">/指令</span><span class="cmd-desc">描述</span><button class="edit-ui text-xs text-red-400 ml-2" onclick="this.parentElement.remove()">刪除此行</button><button class="copy-btn" contenteditable="false" onclick="copyCmd(this)">複製</button></div><button class="edit-ui admin-btn text-xs mb-2" onclick="addCmdRow(this)">+ 新增指令行</button></div>`;
+            const el = document.createElement('div');
+            if (type === 'faq') {
+                el.className = 'bg-white border shadow-sm p-6 relative';
+                el.innerHTML = `<span class="drag-handle edit-ui">☰</span><button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2" onclick="this.parentElement.remove()">[x] 刪除</button><h3 class="text-xl font-bold text-blue-900 mb-4 inline-block">新問題標題</h3><div class="text-gray-700 space-y-2"><p>內容填寫...</p></div>`;
+            } else if (type === 'strategy') {
+                el.className = 'bg-white border shadow-sm p-8 relative';
+                el.innerHTML = `
+                    <button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2" onclick="this.parentElement.remove()">[x] 刪除</button>
+                    <h3 class="text-2xl font-bold text-purple-900 mb-6 flex items-center">新攻略標題</h3>
+                    <div class="text-gray-700"><p>內容填寫...</p></div>
+                    <div class="edit-ui mt-4 border-2 border-dashed border-gray-300 rounded p-4 text-center">
+                        <p class="text-gray-400 text-sm mb-2">📷 點擊上傳圖片</p>
+                        <input type="file" accept="image/*" class="hidden" onchange="insertStrategyImage(this)" contenteditable="false">
+                        <button class="admin-btn text-sm" onclick="this.previousElementSibling.click()" contenteditable="false">選擇圖片</button>
+                    </div>`;
+            } else if (type === 'command') {
+                el.className = 'bg-white border accordion-item relative';
+                el.innerHTML = `<button class="edit-ui admin-btn admin-btn-delete absolute top-2 right-2 z-10" onclick="this.parentElement.remove()">[x] 刪除</button><div class="accordion-header p-5 font-bold text-blue-900" onclick="toggleAccordion(this)">新指令群組</div><div class="accordion-content px-5"><div class="cmd-box"><span class="cmd-text">/指令</span><span class="cmd-desc">描述</span><button class="edit-ui text-xs text-red-400 ml-2" onclick="this.parentElement.remove()">刪除此行</button><button class="copy-btn" contenteditable="false" onclick="copyCmd(this)">複製</button></div><button class="edit-ui admin-btn text-xs mb-2" onclick="addCmdRow(this)">+ 新增指令行</button></div>`;
             }
-            container.prepend(newEl);
-            if(document.body.classList.contains('editing-active')) {
-                newEl.querySelectorAll('.accordion-header, .cmd-text, .cmd-desc, h3, p').forEach(el => el.contentEditable = "true");
+            container.prepend(el);
+            if (document.body.classList.contains('editing-active')) {
+                el.querySelectorAll('.accordion-header,.cmd-text,.cmd-desc,h3,p')
+                    .forEach(n => { n.contentEditable = 'true'; });
             }
         }
 
         function addCmdRow(btn) {
             const row = document.createElement('div');
-            row.className = "cmd-box";
+            row.className = 'cmd-box';
             row.innerHTML = `<span class="cmd-text" contenteditable="true">/新指令</span><span class="cmd-desc" contenteditable="true">描述內容</span><button class="edit-ui text-xs text-red-400 ml-2" onclick="this.parentElement.remove()">刪除此行</button><button class="copy-btn" contenteditable="false" onclick="copyCmd(this)">複製</button>`;
             btn.insertAdjacentElement('beforebegin', row);
         }
 
+        function insertStrategyImage(input) {
+            if (!input.files?.[0]) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = Object.assign(document.createElement('img'), {
+                    src: e.target.result, alt: input.files[0].name,
+                    className: 'max-w-full rounded mt-2 mb-2 mx-auto block'
+                });
+                input.closest('.border-dashed').insertAdjacentElement('beforebegin', img);
+                input.value = '';
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        // ── 複製指令 ──────────────────────────────────────────────
         function copyCmd(btn) {
-            const box = btn.closest('.cmd-box');
-            const text = box.querySelector('.cmd-text').innerText;
-            const doFeedback = () => {
+            const text = btn.closest('.cmd-box').querySelector('.cmd-text').innerText;
+            const feedback = () => {
                 btn.textContent = '✓ 已複製';
                 btn.classList.add('copied');
                 setTimeout(() => { btn.textContent = '複製'; btn.classList.remove('copied'); }, 1800);
             };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(doFeedback).catch(() => {});
-            } else {
-                const ta = document.createElement('textarea');
-                ta.value = text;
+            navigator.clipboard?.writeText(text).then(feedback).catch(() => {
+                const ta = Object.assign(document.createElement('textarea'), { value: text });
                 ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
                 document.body.appendChild(ta);
                 ta.select();
-                try { document.execCommand('copy'); doFeedback(); } catch(e) {}
+                try { document.execCommand('copy'); feedback(); } catch(err) {}
                 document.body.removeChild(ta);
-            }
-        }
-
-        function addCopyButtons() {
-            document.querySelectorAll('.cmd-box').forEach(box => {
-                if (!box.querySelector('.copy-btn')) {
-                    const btn = document.createElement('button');
-                    btn.className = 'copy-btn';
-                    btn.textContent = '複製';
-                    btn.setAttribute('contenteditable', 'false');
-                    btn.onclick = function() { copyCmd(this); };
-                    box.appendChild(btn);
-                }
             });
         }
 
-        window.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.shiftKey && e.code === 'KeyE') {
+        // ── 快捷鍵 Ctrl+Shift+K 開啟編輯模式 ─────────────────────
+        window.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyK') {
                 e.preventDefault();
                 toggleEditMode(true);
             }
         });
 
+        // ── 頁面載入 ──────────────────────────────────────────────
         window.onload = async function() {
             try {
                 const res = await fetch('cobblemon_data.json');
                 if (!res.ok) throw new Error('無法載入 cobblemon_data.json');
                 const data = await res.json();
-                COMMANDS_DATA = data.commands || [];
-                ALL_DATA = data.search_index || [];
-                window.STRATEGIES_DATA = data.strategies || [];
+                COMMANDS_DATA          = data.commands      || [];
+                ALL_DATA               = data.search_index  || [];
+                window.STRATEGIES_DATA = data.strategies    || [];
             } catch (e) {
                 console.error('JSON 載入失敗：', e);
             }
             initCommands();
             initStrategies();
-            addCopyButtons();
         };
     </script>
 
