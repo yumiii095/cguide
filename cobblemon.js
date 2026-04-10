@@ -413,6 +413,14 @@ function addCmdRow(btn) {
     btn.insertAdjacentElement('beforebegin', row);
 }
 
+// 將 STRATEGIES_DATA 同步為 DOM 中實際存在的攻略（過濾掉已被刪除的）
+function _syncStrategiesDataFromDOM() {
+    const existing = new Set(
+        Array.from(document.querySelectorAll('#strategy-container > .strat-card[id]')).map(c => c.id)
+    );
+    window.STRATEGIES_DATA = (window.STRATEGIES_DATA || []).filter(s => existing.has(s.id));
+}
+
 function addNewSection(containerId, type) {
     const container = document.getElementById(containerId);
     const el = document.createElement('div');
@@ -428,10 +436,13 @@ function addNewSection(containerId, type) {
         const newId   = 'strat-new-' + Date.now();
         const newStrat = {
             id    : newId,
+            icon  : '📖',
             title : '新攻略標題',
             html  : '<h3 class="text-2xl font-bold text-purple-900 mb-6 flex items-center">新攻略標題</h3><div class="text-gray-700"><p>內容填寫...</p></div>',
         };
         if (!window.STRATEGIES_DATA) window.STRATEGIES_DATA = [];
+        // 只保留 DOM 中還存在的攻略，確保已刪除的不會復活
+        _syncStrategiesDataFromDOM();
         window.STRATEGIES_DATA.unshift(newStrat);
         initStrategies();
         return;
@@ -505,15 +516,18 @@ function initStrategies() {
 
     container.innerHTML = '';
     window.STRATEGIES_DATA.forEach((strat, idx) => {
-        const icon    = _stratIcons[idx % _stratIcons.length];
+        // 保留已儲存的 icon，若無則從預設陣列取得
+        if (!strat.icon) strat.icon = _stratIcons[idx % _stratIcons.length];
+        const icon    = strat.icon;
         const preview = _stratPreview(strat.html);
         const card    = document.createElement('div');
         card.id        = strat.id;
         card.className = 'strat-card';
+        const isEditing = document.body.classList.contains('editing-active');
         card.innerHTML = `
             <button class="edit-ui admin-btn admin-btn-delete" style="position:absolute;top:10px;right:10px;padding:4px 10px;font-size:12px"
                 onclick="event.stopPropagation();this.closest('.strat-card').remove()" contenteditable="false">[x]</button>
-            <div class="strat-card-icon">${icon}</div>
+            <div class="strat-card-icon" ${isEditing ? `onclick="event.stopPropagation();_openStratIconPicker(this,'${strat.id}')" style="cursor:pointer;"` : ''}>${icon}${isEditing ? '<span class="edit-ui" style="position:absolute;top:6px;left:8px;font-size:10px;background:rgba(0,0,0,0.55);color:#fff;border-radius:4px;padding:1px 4px;pointer-events:none;">✏️</span>' : ''}</div>
             <div class="strat-card-title">${strat.title.replace(/^[\p{Emoji}✨⚔️💰🛒🥚📊🌿🏆🗺️💎⚡📖]+\s*/u, '')}</div>
             <div class="strat-card-preview">${preview}</div>
             <span class="strat-card-arrow">›</span>`;
@@ -538,14 +552,43 @@ function openStratModal(strat) {
 
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
-    if (isEditing) setTimeout(_setupImgDropTargets, 50);
+    if (isEditing) {
+        setTimeout(_setupImgDropTargets, 50);
+        // 支援直接貼上圖片（Ctrl+V）
+        if (!body._pasteImgHandler) {
+            body._pasteImgHandler = function(e) {
+                if (!document.body.classList.contains('editing-active')) return;
+                const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+                if (!items) return;
+                for (const item of items) {
+                    if (item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+                        const reader = new FileReader();
+                        reader.onload = ev => _createDraggableImage(ev.target.result, '貼上圖片');
+                        reader.readAsDataURL(file);
+                        break;
+                    }
+                }
+            };
+            body.addEventListener('paste', body._pasteImgHandler);
+        }
+    }
 }
 
 function saveStratEdits() {
     if (!_activeStrat) return;
     const body  = document.getElementById('strat-modal-body');
     const clone = body.cloneNode(true);
+    // 移除所有編輯 UI 元素（工具列、刪除按鈕、鉛筆標記等）
     clone.querySelectorAll('.edit-ui').forEach(el => el.remove());
+    // 移除 contenteditable 屬性，避免儲存後重新開啟時內容變成可編輯狀態
+    clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+    // 清除小提醒/注意事項中的 position:relative style（由 insertTip/insertNotice 加入）
+    clone.querySelectorAll('.mt-4.bg-yellow-50, .notice-block').forEach(el => {
+        el.style.removeProperty('position');
+    });
     const h3 = clone.querySelector('h3');
     _activeStrat.title = h3 ? h3.innerText.trim() : _activeStrat.title;
     _activeStrat.html  = clone.innerHTML.trim();
@@ -559,6 +602,67 @@ function closeStratModal() {
     document.getElementById('strat-modal-body').removeAttribute('contenteditable');
     document.body.style.overflow = '';
     _activeStrat = null;
+}
+
+// 攻略卡片圖示選擇器
+const _allStratIcons = ['📖','⚔️','💰','🛒','🥚','📊','🌿','✨','🏆','🗺️','💎','⚡',
+    '🔥','❄️','💧','🌊','⚡','🌟','🎯','🛡️','🗡️','🧪','🧬','🌐','🎮','🏅','🎁','🌸','🐉'];
+
+function _openStratIconPicker(iconEl, stratId) {
+    if (!document.body.classList.contains('editing-active')) return;
+    // 移除舊的 picker
+    document.querySelectorAll('._strat-icon-picker').forEach(p => p.remove());
+
+    const picker = document.createElement('div');
+    picker.className = '_strat-icon-picker';
+    picker.setAttribute('contenteditable', 'false');
+    picker.style.cssText = [
+        'position:fixed','z-index:99999','background:#1e293b',
+        'border:1.5px solid #3b82f6','border-radius:12px','padding:10px',
+        'display:flex','flex-wrap:wrap','gap:6px','max-width:260px',
+        'box-shadow:0 8px 32px rgba(0,0,0,0.45)',
+    ].join(';');
+
+    _allStratIcons.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.textContent = emoji;
+        btn.setAttribute('contenteditable', 'false');
+        btn.style.cssText = 'font-size:1.5rem;background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;transition:background 0.15s;';
+        btn.onmouseenter = () => { btn.style.background = '#334155'; };
+        btn.onmouseleave = () => { btn.style.background = 'none'; };
+        btn.onmousedown = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            // 更新資料
+            const strat = (window.STRATEGIES_DATA || []).find(s => s.id === stratId);
+            if (strat) strat.icon = emoji;
+            // 更新卡片上的顯示（只更新 icon div 文字節點）
+            const textNode = iconEl.firstChild;
+            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                textNode.nodeValue = emoji;
+            } else {
+                iconEl.innerHTML = emoji + (iconEl.querySelector('span')?.outerHTML || '');
+            }
+            picker.remove();
+        };
+        picker.appendChild(btn);
+    });
+
+    // 定位到圖示旁
+    const rect = iconEl.getBoundingClientRect();
+    picker.style.top  = Math.min(rect.bottom + 6, window.innerHeight - 200) + 'px';
+    picker.style.left = Math.max(4, rect.left) + 'px';
+
+    document.body.appendChild(picker);
+
+    // 點擊其他地方關閉
+    const closeHandler = e => {
+        if (!picker.contains(e.target) && e.target !== iconEl) {
+            picker.remove();
+            document.removeEventListener('mousedown', closeHandler, true);
+        }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeHandler, true), 10);
 }
 
 function insertStrategyImage(input) {
@@ -827,16 +931,22 @@ function _insertAtCursor(el) {
 function insertTip() {
     const el = document.createElement('div');
     el.className = 'mt-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-gray-800';
+    el.style.cssText = 'position:relative;';
     el.setAttribute('contenteditable', 'true');
-    el.innerHTML = '💡 <b>小提醒：</b>在此輸入文字...';
+    el.innerHTML = '<button class="edit-ui" contenteditable="false" onmousedown="event.preventDefault();event.stopPropagation();this.parentElement.remove()" '
+        + 'style="position:absolute;top:4px;right:6px;background:none;border:none;color:#ef4444;font-size:13px;cursor:pointer;line-height:1;padding:2px 5px;border-radius:4px;" title="刪除">✕</button>'
+        + '💡 <b>小提醒：</b>在此輸入文字...';
     _insertAtCursor(el);
 }
 
 function insertNotice() {
     const el = document.createElement('div');
     el.className = 'notice-block';
+    el.style.cssText = 'position:relative;';
     el.setAttribute('contenteditable', 'true');
-    el.innerHTML = '<div class="notice-title">⚠️ 注意事項</div><p>在此輸入注意事項內容...</p>';
+    el.innerHTML = '<button class="edit-ui" contenteditable="false" onmousedown="event.preventDefault();event.stopPropagation();this.parentElement.remove()" '
+        + 'style="position:absolute;top:4px;right:6px;background:none;border:none;color:#ef4444;font-size:13px;cursor:pointer;line-height:1;padding:2px 5px;border-radius:4px;" title="刪除">✕</button>'
+        + '<div class="notice-title">⚠️ 注意事項</div><p>在此輸入注意事項內容...</p>';
     _insertAtCursor(el);
 }
 
@@ -1064,7 +1174,12 @@ function extractStrategiesFromDOM() {
     const remaining = new Set(
         Array.from(document.querySelectorAll('#strategy-container > .strat-card[id]')).map(c => c.id)
     );
-    return (window.STRATEGIES_DATA || []).filter(s => remaining.has(s.id));
+    return (window.STRATEGIES_DATA || []).filter(s => remaining.has(s.id)).map(s => ({
+        id    : s.id,
+        title : s.title,
+        icon  : s.icon || '📖',
+        html  : s.html,
+    }));
 }
 
 function executeFinalSave() {
@@ -1112,6 +1227,8 @@ function executeFinalSave() {
     }
     closeModal();
     toggleEditMode(false);
+    // 確保已刪除的攻略不被寫入 JSON
+    _syncStrategiesDataFromDOM();
 
     // ── [修改1] 先確保切回首頁（淺色模式狀態） ─────────────────────
     // 同時確保 dark-mode class 不存在，讓下載的 HTML 預設為淺色模式
@@ -1223,6 +1340,39 @@ document.addEventListener('DOMContentLoaded', function () {
     initStrategies();
     // [修改3] 初始化頁腳5連點開啟編輯模式
     _initFooterTapSecret();
+});
+
+// 攔截 contenteditable 區域的貼上，清除 emoji 被包上的黑底 span
+document.addEventListener('paste', function(e) {
+    const target = e.target;
+    if (!target.closest('[contenteditable="true"]')) return;
+    // 若剪貼簿只有純文字，不做特殊處理（讓瀏覽器預設行為跑）
+    const clipData = e.clipboardData || window.clipboardData;
+    if (!clipData) return;
+    const html = clipData.getData('text/html');
+    const text = clipData.getData('text/plain');
+    // 只有在有 HTML 且包含可能帶樣式的 span 時才攔截
+    if (!html || !html.includes('background')) return;
+    e.preventDefault();
+    // 解析 HTML，移除所有 background-color 及 color 樣式，再插入
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    div.querySelectorAll('[style]').forEach(el => {
+        el.style.removeProperty('background-color');
+        el.style.removeProperty('background');
+        // 如果是 emoji（只含 emoji 字元），也移除 color
+        const txt = el.textContent || '';
+        if (/^\p{Emoji}/u.test(txt)) el.style.removeProperty('color');
+        // 若 style 清空了，移除 style 屬性
+        if (!el.getAttribute('style').trim()) el.removeAttribute('style');
+    });
+    // 移除空的 span 包裹（把內容提升）
+    div.querySelectorAll('span:not([class]):not([id])').forEach(span => {
+        if (!span.getAttribute('style')) {
+            span.replaceWith(...span.childNodes);
+        }
+    });
+    document.execCommand('insertHTML', false, div.innerHTML);
 });
 
 document.addEventListener('selectionchange', () => {
