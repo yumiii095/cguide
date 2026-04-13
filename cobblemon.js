@@ -1212,7 +1212,7 @@ function renderAdSidebar() {
     const isEditing = document.body.classList.contains('editing-active');
 
     if (window.ADS_DATA.length === 0) {
-        // 資料尚未載入時不清空容器（保留靜態 HTML 或上次內容）
+        container.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">目前沒有廣告</p>';
         return;
     }
 
@@ -1836,6 +1836,9 @@ window.onload = async function () {
             window.ADS_DATA = data.ads;
             // 同步寫入 localStorage，讓後續操作保持一致
             try { localStorage.setItem('cobblemon_ads', JSON.stringify(window.ADS_DATA)); } catch(e) {}
+            // JSON 載入後立即重新渲染廣告區（首頁側欄 + 贊助頁）
+            renderAdSidebar();
+            renderSponsorGrid();
         }
 
         if (Array.isArray(data.serverCommands) && data.serverCommands.length > 0) {
