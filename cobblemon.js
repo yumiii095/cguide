@@ -1563,10 +1563,10 @@ function executeFinalSave() {
     const _savedDark = (() => { try { return localStorage.getItem('cobblemon_dark'); } catch(e) { return null; } })();
     if (_savedDark === '1') {
         document.body.classList.add('dark-mode');
-        document.getElementById('mode-knob').innerText = '☀️';
+        document.getElementById('mode-knob').innerText = '🌙';
     } else {
         document.body.classList.remove('dark-mode');
-        document.getElementById('mode-knob').innerText = '🌙';
+        document.getElementById('mode-knob').innerText = '☀️';
     }
     showPage('home');
 
@@ -1594,6 +1594,7 @@ function executeFinalSave() {
         serverCommands : serverCmds,
         search_index   : ALL_DATA,
         strategies     : extractStrategiesFromDOM(),
+        ads            : window.ADS_DATA || [],
     };
     const jsonBlob = new Blob([JSON.stringify(jsonPayload, null, 2)], { type: 'application/json' });
     Object.assign(document.createElement('a'), {
@@ -1601,8 +1602,18 @@ function executeFinalSave() {
     }).click();
 
     setTimeout(() => {
+        // 確保匯出的 HTML 不帶 dark-mode，讓新檔案預設淺色模式
+        const _hadDark = document.body.classList.contains('dark-mode');
+        document.body.classList.remove('dark-mode');
+        // 匯出前將 scSections 還原為 loading 狀態，確保 HTML 不內嵌靜態指令資料
+        const scSec = document.getElementById('scSections');
+        const scSecBackup = scSec ? scSec.innerHTML : null;
+        if (scSec) scSec.innerHTML = '<div id="sc-loading-msg" style="text-align:center;padding:40px;color:#64748b;font-size:0.9rem;">⏳ 載入指令資料中...</div>';
+        const exportedHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        if (scSec && scSecBackup !== null) scSec.innerHTML = scSecBackup;
+        if (_hadDark) document.body.classList.add('dark-mode');
         Object.assign(document.createElement('a'), {
-            href     : URL.createObjectURL(new Blob(['<!DOCTYPE html>\n' + document.documentElement.outerHTML], { type: 'text/html' })),
+            href     : URL.createObjectURL(new Blob([exportedHtml], { type: 'text/html' })),
             download : 'index.html',
         }).click();
     }, 300);
@@ -1651,7 +1662,7 @@ function addNewsCard() {
 function toggleDarkMode() {
     document.body.classList.toggle('dark-mode');
     const isDark = document.body.classList.contains('dark-mode');
-    document.getElementById('mode-knob').innerText = isDark ? '☀️' : '🌙';
+    document.getElementById('mode-knob').innerText = isDark ? '🌙' : '☀️';
     try { localStorage.setItem('cobblemon_dark', isDark ? '1' : '0'); } catch(e) {}
 }
 
@@ -1663,6 +1674,11 @@ function showPage(pageId) {
     document.getElementById('mobile-menu').classList.remove('open');
     // 切換到贊助/廣告相關頁時重新渲染（保持 editing 狀態同步）
     if (pageId === 'sponsor') { renderAdSidebar(); renderSponsorGrid(); }
+    // 廣告詳情頁隱藏 header（導覽列）與 footer，其他頁面顯示
+    const footer = document.querySelector('footer');
+    if (footer) footer.style.display = (pageId === 'ad-detail') ? 'none' : '';
+    const header = document.querySelector('header');
+    if (header) header.style.display = (pageId === 'ad-detail') ? 'none' : '';
 }
 
 function toggleMobileMenu() {
@@ -1815,6 +1831,12 @@ window.onload = async function () {
         COMMANDS_DATA          = data.commands      || [];
         ALL_DATA               = data.search_index  || [];
         window.STRATEGIES_DATA = data.strategies    || [];
+
+        if (Array.isArray(data.ads) && data.ads.length > 0) {
+            window.ADS_DATA = data.ads;
+            // 同步寫入 localStorage，讓後續操作保持一致
+            try { localStorage.setItem('cobblemon_ads', JSON.stringify(window.ADS_DATA)); } catch(e) {}
+        }
 
         if (Array.isArray(data.serverCommands) && data.serverCommands.length > 0) {
             window.scData = data.serverCommands.map(s => Object.assign({}, s));
