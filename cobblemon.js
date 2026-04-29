@@ -394,14 +394,7 @@ function copyCmd(btn) {
         btn.classList.add('copied');
         setTimeout(() => { btn.textContent = '複製'; btn.classList.remove('copied'); }, 1800);
     };
-    navigator.clipboard?.writeText(text).then(feedback).catch(() => {
-        const ta = Object.assign(document.createElement('textarea'), { value: text });
-        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); feedback(); } catch (err) {}
-        document.body.removeChild(ta);
-    });
+    navigator.clipboard?.writeText(text).then(feedback);
 }
 
 function addCmdRow(btn) {
@@ -1510,11 +1503,33 @@ function extractStrategiesFromDOM() {
     }));
 }
 
+// 產生 Cache Busting 用的建置版本號（YYYYMMDDHHmm，台北時區）
+function _buildCacheBusterVer() {
+    const now  = new Date();
+    const fmt  = new Intl.DateTimeFormat('zh-TW', {
+        timeZone: 'Asia/Taipei',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    });
+    const parts = {};
+    fmt.formatToParts(now).forEach(p => { if (p.type !== 'literal') parts[p.type] = p.value; });
+    return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}`;
+}
+
+// 將檔案內所有 ?v=202604290127 統一替換為新版本號
+// 比對範圍：?v= 後面非空白且非引號、結尾或 & 之前的字元
+function _stampCacheBuster(text, ver) {
+    return text.replace(/\?v=[\w.\-]+/g, '?v=' + ver);
+}
+
 function executeFinalSave() {
     const summary    = document.getElementById('modal-summary').value || '攻略站內容更新';
     const detail     = document.getElementById('modal-detail').value;
     const version    = document.getElementById('modal-version').value;
     const updateType = document.querySelector('input[name="update-type"]:checked')?.value || 'minor';
+
+    // 本次發佈統一使用的 Cache Busting 版本號
+    const _buildVer = _buildCacheBusterVer();
 
     const publishAnnouncement = updateType !== 'maintenance'
         || (document.getElementById('modal-publish-maintenance')?.checked ?? true);
@@ -1586,12 +1601,9 @@ function executeFinalSave() {
         ...strategyEntries,
     ];
 
-    const serverCmds = window.scData || [];
-
     const jsonPayload = {
         data_version   : version,
         commands       : extractCommandsFromDOM(),
-        serverCommands : serverCmds,
         search_index   : ALL_DATA,
         strategies     : extractStrategiesFromDOM(),
         ads            : window.ADS_DATA || [],
@@ -1605,13 +1617,21 @@ function executeFinalSave() {
         // 確保匯出的 HTML 不帶 dark-mode，讓新檔案預設淺色模式
         const _hadDark = document.body.classList.contains('dark-mode');
         document.body.classList.remove('dark-mode');
-        // 匯出前將 scSections 還原為 loading 狀態，確保 HTML 不內嵌靜態指令資料
+        // 取得當前最新 scData，更新 HTML 內的內嵌資料
         const scSec = document.getElementById('scSections');
         const scSecBackup = scSec ? scSec.innerHTML : null;
-        if (scSec) scSec.innerHTML = '<div id="sc-loading-msg" style="text-align:center;padding:40px;color:#64748b;font-size:0.9rem;">⏳ 載入指令資料中...</div>';
-        const exportedHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        if (scSec) scSec.innerHTML = '';
+        let exportedHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
         if (scSec && scSecBackup !== null) scSec.innerHTML = scSecBackup;
         if (_hadDark) document.body.classList.add('dark-mode');
+        // 將內嵌的 scData 替換為最新版本
+        const latestScData = JSON.stringify(window.scData || [], null, 0);
+        exportedHtml = exportedHtml.replace(
+            /const initial = \[([\s\S]*?)\];(\s*window\.scData = initial;)/,
+            'const initial = ' + latestScData + ';$2'
+        );
+        // ── Cache Busting：將 HTML 內所有 ?v=202604290127 替換成本次建置版本號 ──
+        exportedHtml = _stampCacheBuster(exportedHtml, _buildVer);
         Object.assign(document.createElement('a'), {
             href     : URL.createObjectURL(new Blob([exportedHtml], { type: 'text/html' })),
             download : 'index.html',
@@ -1619,9 +1639,11 @@ function executeFinalSave() {
     }, 300);
 
     setTimeout(() => {
-        fetch('cobblemon.js')
+        fetch('cobblemon.js?v=' + Date.now())
             .then(r => r.text())
             .then(src => {
+                // ── Cache Busting：將 JS 內所有 ?v=202604290127 替換成本次建置版本號 ──
+                src = _stampCacheBuster(src, _buildVer);
                 Object.assign(document.createElement('a'), {
                     href     : URL.createObjectURL(new Blob([src], { type: 'application/javascript' })),
                     download : 'cobblemon.js',
@@ -1674,6 +1696,8 @@ function showPage(pageId) {
     document.getElementById('mobile-menu').classList.remove('open');
     // 切換到贊助/廣告相關頁時重新渲染（保持 editing 狀態同步）
     if (pageId === 'sponsor') { renderAdSidebar(); renderSponsorGrid(); }
+    // 切換到圖鑑分頁時觸發 JSON 載入(只會載一次)
+    if (pageId === 'pokedex' && typeof window.pdxLoad === 'function') { window.pdxLoad(); }
     // 廣告詳情頁隱藏 header（導覽列）與 footer，其他頁面顯示
     const footer = document.querySelector('footer');
     if (footer) footer.style.display = (pageId === 'ad-detail') ? 'none' : '';
@@ -1813,7 +1837,7 @@ window.onload = async function () {
 
     if (!data) {
         try {
-            const res = await fetch('cobblemon_data.json');
+            const res = await fetch('cobblemon_data.json?v=202604290127');
             if (res.ok) data = await res.json();
         } catch (e) {
             console.error('[Cobblemon] JSON 載入失敗：', e);
@@ -1834,10 +1858,6 @@ window.onload = async function () {
             renderSponsorGrid();
         }
 
-        if (Array.isArray(data.serverCommands) && data.serverCommands.length > 0) {
-            window.scData = data.serverCommands.map(s => Object.assign({}, s));
-            if (typeof window.scRender === 'function') window.scRender();
-        }
     }
 
     initFuse();
