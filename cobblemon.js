@@ -1008,6 +1008,24 @@ function _buildModalEditBar() {
         <button class="rb" onmousedown="event.preventDefault();applyFormat('underline')"><u>U</u></button>
         <button class="rb" onmousedown="event.preventDefault();applyFormat('strikeThrough')"><s>S</s></button>
         <span class="rb-sep"></span>
+        <div class="rb-swatch" style="background:#e11d48;" onmousedown="event.preventDefault();applyFormat('foreColor','#e11d48')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#f97316;" onmousedown="event.preventDefault();applyFormat('foreColor','#f97316')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#eab308;" onmousedown="event.preventDefault();applyFormat('foreColor','#eab308')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#16a34a;" onmousedown="event.preventDefault();applyFormat('foreColor','#16a34a')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#2563eb;" onmousedown="event.preventDefault();applyFormat('foreColor','#2563eb')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#9333ea;" onmousedown="event.preventDefault();applyFormat('foreColor','#9333ea')" title="字體顏色"></div>
+        <div class="rb-swatch" style="background:#111827;" onmousedown="event.preventDefault();applyFormat('foreColor','#111827')" title="字體顏色"></div>
+        <input type="color" class="rb-swatch" style="padding:0;border:1px solid #475569;cursor:pointer;" value="#000000"
+            onmousedown="event.stopPropagation();" onchange="applyFormat('foreColor',this.value)" title="自訂字體顏色">
+        <span class="rb-sep"></span>
+        <div class="rb-swatch" style="background:#fef08a;" onmousedown="event.preventDefault();applyFormat('hiliteColor','#fef08a')" title="底色"></div>
+        <div class="rb-swatch" style="background:#bbf7d0;" onmousedown="event.preventDefault();applyFormat('hiliteColor','#bbf7d0')" title="底色"></div>
+        <div class="rb-swatch" style="background:#bfdbfe;" onmousedown="event.preventDefault();applyFormat('hiliteColor','#bfdbfe')" title="底色"></div>
+        <div class="rb-swatch" style="background:#fbcfe8;" onmousedown="event.preventDefault();applyFormat('hiliteColor','#fbcfe8')" title="底色"></div>
+        <div class="rb-swatch" style="background:transparent;border:1px dashed #94a3b8;" onmousedown="event.preventDefault();applyFormat('hiliteColor','transparent')" title="清除底色"></div>
+        <input type="color" class="rb-swatch" style="padding:0;border:1px solid #475569;cursor:pointer;" value="#fef08a"
+            onmousedown="event.stopPropagation();" onchange="applyFormat('hiliteColor',this.value)" title="自訂底色">
+        <span class="rb-sep"></span>
         <button class="rb" onmousedown="event.preventDefault();insertLink()" title="連結">連結</button>
         <label class="rb" style="cursor:pointer;" title="插入圖片">圖片 <input type="file" accept="image/*" style="display:none" onchange="insertEditableImage(this)" contenteditable="false"></label>
         <button class="rb" onmousedown="event.preventDefault();insertTip()" title="小提醒">提醒</button>
@@ -1596,7 +1614,7 @@ function _buildCacheBusterVer() {
     return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}`;
 }
 
-// 將檔案內所有 ?v=202607062347 統一替換為新版本號
+// 將檔案內所有 ?v=202607091833 統一替換為新版本號
 // 比對範圍：?v= 後面非空白且非引號、結尾或 & 之前的字元
 function _stampCacheBuster(text, ver) {
     return text.replace(/\?v=[\w.\-]+/g, '?v=' + ver);
@@ -1711,7 +1729,7 @@ function executeFinalSave() {
             /const initial = \[([\s\S]*?)\];(\s*window\.scData = initial;)/,
             'const initial = ' + latestScData + ';$2'
         );
-        // ── Cache Busting：將 HTML 內所有 ?v=202607062347 替換成本次建置版本號 ──
+        // ── Cache Busting：將 HTML 內所有 ?v=202607091833 替換成本次建置版本號 ──
         exportedHtml = _stampCacheBuster(exportedHtml, _buildVer);
         Object.assign(document.createElement('a'), {
             href     : URL.createObjectURL(new Blob([exportedHtml], { type: 'text/html' })),
@@ -1723,7 +1741,7 @@ function executeFinalSave() {
         fetch('cobblemon.js?v=' + Date.now())
             .then(r => r.text())
             .then(src => {
-                // ── Cache Busting：將 JS 內所有 ?v=202607062347 替換成本次建置版本號 ──
+                // ── Cache Busting：將 JS 內所有 ?v=202607091833 替換成本次建置版本號 ──
                 src = _stampCacheBuster(src, _buildVer);
                 Object.assign(document.createElement('a'), {
                     href     : URL.createObjectURL(new Blob([src], { type: 'application/javascript' })),
@@ -1932,7 +1950,7 @@ window.onload = async function () {
 
     if (!data) {
         try {
-            const res = await fetch('cobblemon_data.json?v=202607062347');
+            const res = await fetch('cobblemon_data.json?v=202607091833');
             if (res.ok) data = await res.json();
         } catch (e) {
             console.error('[Cobblemon] JSON 載入失敗：', e);
