@@ -510,7 +510,13 @@ function initStrategies() {
         });
     }
 
-    if (!window.STRATEGIES_DATA) return;
+    if (!window.STRATEGIES_DATA) {
+        container.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:56px 20px;color:#94a3b8;font-size:0.95rem;">
+            <div class="strat-loading-spinner"></div>
+            ⏳ 攻略資料載入中，請稍候...
+        </div>`;
+        return;
+    }
 
     container.innerHTML = '';
     window.STRATEGIES_DATA.forEach((strat, idx) => {
@@ -595,7 +601,134 @@ function saveStratEdits() {
     if (btn) { btn.textContent = '✅ 已儲存'; setTimeout(() => { if (btn) btn.textContent = '💾 儲存'; }, 1500); }
 }
 
+function navigateToStrat(id) {
+    showPage('strategy');
+    let attempts = 0;
+    const MAX_ATTEMPTS = 400; // 400 * 150ms ≈ 60 秒，涵蓋 cobblemon_data.json 較慢的載入情況
+    const tryScroll = () => {
+        const card = document.getElementById(id);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.add('strat-card-highlight');
+            setTimeout(() => card.classList.remove('strat-card-highlight'), 2200);
+            // 捲動到定位後，順便自動開啟該篇攻略文章
+            setTimeout(() => openStratById(id), 450);
+            return;
+        }
+        attempts++;
+        if (attempts < MAX_ATTEMPTS) {
+            setTimeout(tryScroll, 150);
+        } else {
+            console.warn('[navigateToStrat] 找不到攻略卡片：', id);
+        }
+    };
+    setTimeout(tryScroll, 60);
+}
+
+function openStratById(id) {
+    const strat = (window.STRATEGIES_DATA || []).find(s => s.id === id);
+    if (strat) {
+        openStratModal(strat);
+        return;
+    }
+    // 找不到資料時，嘗試從畫面上現有卡片組出基本內容
+    const card = document.getElementById(id);
+    if (card) {
+        const title   = card.querySelector('.strat-card-title')?.innerText || '攻略';
+        const preview = card.querySelector('.strat-card-preview')?.innerText || '';
+        const icon    = card.querySelector('.strat-card-icon')?.innerText    || '📖';
+        openStratModal({
+            id, title,
+            html: `<h3 class="text-2xl font-bold text-purple-900 mb-6 flex items-center">${icon} ${title}</h3><p class="text-gray-600">${preview}</p>`,
+        });
+        return;
+    }
+    console.warn('[openStratById] 找不到對應的攻略文章：', id);
+}
+
+function openStratLinkPicker(btn) {
+    if (!document.body.classList.contains('editing-active')) return;
+    if (!_hasLiveEditableSelection()) {
+        alert('請先框選要加上攻略連結的文字，再點這個按鈕');
+        return;
+    }
+    // 記住目前框選範圍，稍後套用連結時需要用到
+    _rememberSelection();
+
+    document.querySelectorAll('._strat-link-picker').forEach(p => p.remove());
+
+    const strats = window.STRATEGIES_DATA || [];
+    const picker = document.createElement('div');
+    picker.className = '_strat-link-picker';
+    picker.setAttribute('contenteditable', 'false');
+    picker.style.cssText = [
+        'position:fixed', 'z-index:99999', 'background:#1e293b',
+        'border:1.5px solid #3b82f6', 'border-radius:12px', 'padding:8px',
+        'display:flex', 'flex-direction:column', 'gap:2px', 'width:280px',
+        'max-height:340px', 'overflow-y:auto',
+        'box-shadow:0 8px 32px rgba(0,0,0,0.45)',
+    ].join(';');
+
+    const header = document.createElement('div');
+    header.textContent = '選擇要連結的攻略文章：';
+    header.style.cssText = 'color:#94a3b8;font-size:12px;font-weight:700;padding:4px 8px 6px;';
+    picker.appendChild(header);
+
+    if (!strats.length) {
+        const empty = document.createElement('div');
+        empty.textContent = '目前沒有可連結的攻略文章';
+        empty.style.cssText = 'color:#94a3b8;font-size:13px;padding:8px;';
+        picker.appendChild(empty);
+    } else {
+        strats.forEach(strat => {
+            const item = document.createElement('button');
+            item.textContent = (strat.icon ? strat.icon + ' ' : '') + strat.title;
+            item.setAttribute('contenteditable', 'false');
+            item.style.cssText = 'text-align:left;background:none;border:none;color:#e2e8f0;font-size:13px;padding:7px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background 0.15s;';
+            item.onmouseenter = () => { item.style.background = '#334155'; };
+            item.onmouseleave = () => { item.style.background = 'none'; };
+            item.onmousedown = e => {
+                e.preventDefault();
+                e.stopPropagation();
+                _applyStratLink(strat.id);
+                picker.remove();
+                document.removeEventListener('mousedown', closeHandler, true);
+            };
+            picker.appendChild(item);
+        });
+    }
+
+    const rect = btn.getBoundingClientRect();
+    picker.style.top  = Math.min(rect.bottom + 6, window.innerHeight - 200) + 'px';
+    picker.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 290)) + 'px';
+    document.body.appendChild(picker);
+
+    const closeHandler = e => {
+        if (!picker.contains(e.target) && e.target !== btn) {
+            picker.remove();
+            document.removeEventListener('mousedown', closeHandler, true);
+        }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeHandler, true), 10);
+}
+
+function _applyStratLink(stratId) {
+    if (!_restoreSelection()) return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const text = sel.toString();
+    if (!text) return;
+    const safeText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const html = `<a href="javascript:void(0)" class="strat-link" onclick="event.preventDefault();navigateToStrat('${stratId}')">${safeText}</a>`;
+    document.execCommand('insertHTML', false, html);
+    _rememberSelection();
+}
+
 function closeStratModal() {
+    const modalBody = document.getElementById('strat-modal-body');
+    if (modalBody && modalBody.getAttribute('contenteditable') === 'true') {
+        saveStratEdits();
+    }
     document.getElementById('strat-modal').classList.remove('open');
     document.getElementById('strat-modal-body').removeAttribute('contenteditable');
     document.body.style.overflow = '';
@@ -979,6 +1112,57 @@ function applyFormat(command, value = null) {
     _rememberSelection();
 }
 
+function _hasLiveEditableSelection() {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed) return false;
+    const node = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+    return !!(node && node.closest('[contenteditable="true"]'));
+}
+
+const _BLOCK_TAGS = ['P','H1','H2','H3','H4','LI','BLOCKQUOTE','DIV'];
+
+function _closestBlock(node, root) {
+    let el = node && (node.nodeType === 1 ? node : node.parentElement);
+    while (el && el !== root) {
+        if (_BLOCK_TAGS.includes(el.tagName)) return el;
+        el = el.parentElement;
+    }
+    return null;
+}
+
+function applyLineHeight(value) {
+    if (!document.body.classList.contains('editing-active') || !value) return;
+    if (!_hasLiveEditableSelection()) _restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const anchorEl = range.commonAncestorContainer.nodeType === 1
+        ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const root = anchorEl && anchorEl.closest('[contenteditable="true"]');
+    if (!root) return;
+
+    const blocks = new Set();
+    const startBlock = _closestBlock(range.startContainer, root);
+    const endBlock   = _closestBlock(range.endContainer, root);
+    if (startBlock) blocks.add(startBlock);
+    if (endBlock) blocks.add(endBlock);
+
+    if (startBlock !== endBlock) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+            acceptNode(node) {
+                return (_BLOCK_TAGS.includes(node.tagName) && range.intersectsNode(node))
+                    ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+            }
+        });
+        let node;
+        while (node = walker.nextNode()) blocks.add(node);
+    }
+
+    if (blocks.size === 0 && root) blocks.add(root);
+    blocks.forEach(b => { if (b) b.style.lineHeight = value; });
+    _rememberSelection();
+}
+
 function updateFormatState() {
     const map = {
         bold: 'rb-bold',
@@ -999,8 +1183,33 @@ function _buildModalEditBar() {
     return `<div class="edit-ui" contenteditable="false"
         style="position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:4px;background:#0f172a;padding:8px 12px;border-radius:10px;margin-bottom:14px;flex-wrap:wrap;box-shadow:0 4px 14px rgba(0,0,0,0.3);">
         <span style="font-size:11px;font-weight:700;color:#00AEEF;margin-right:4px;">編輯</span>
+        <select class="rb-select" style="max-width:90px;height:24px;" title="段落樣式" onmousedown="event.stopPropagation();" onchange="applyFormat('formatBlock',this.value)">
+            <option value="<p>" selected>內文</option>
+            <option value="<h2>">標題 1</option>
+            <option value="<h3>">標題 2</option>
+            <option value="<h4>">標題 3</option>
+            <option value="<blockquote>">引言</option>
+        </select>
+        <select class="rb-select" style="max-width:96px;height:24px;" title="字型" onmousedown="event.stopPropagation();" onchange="applyFormat('fontName',this.value)">
+            <option value="'Noto Sans TC',sans-serif" selected>預設字型</option>
+            <option value="'Microsoft JhengHei',sans-serif">微軟正黑體</option>
+            <option value="'PMingLiU',serif">新細明體</option>
+            <option value="'DFKai-SB','BiauKai',serif">標楷體</option>
+            <option value="Georgia,serif">Georgia</option>
+            <option value="'Times New Roman',serif">Times New Roman</option>
+            <option value="Arial,sans-serif">Arial</option>
+            <option value="'Courier New',monospace">Courier New</option>
+        </select>
         <select class="rb-select" style="max-width:72px;height:24px;" title="字體大小" onmousedown="event.stopPropagation();" onchange="applyFormat('fontSize',this.value)">
             <option value="1">10px</option><option value="2">13px</option><option value="3" selected>16px</option><option value="4">18px</option><option value="5">24px</option><option value="6">32px</option><option value="7">48px</option>
+        </select>
+        <select class="rb-select" style="max-width:68px;height:24px;" title="行距" onmousedown="event.stopPropagation();" onchange="applyLineHeight(this.value)">
+            <option value="">行距</option>
+            <option value="1">1.0</option>
+            <option value="1.15">1.15</option>
+            <option value="1.5">1.5</option>
+            <option value="2">2.0</option>
+            <option value="2.5">2.5</option>
         </select>
         <span class="rb-sep"></span>
         <button class="rb" onmousedown="event.preventDefault();applyFormat('bold')"><b>B</b></button>
@@ -1026,7 +1235,18 @@ function _buildModalEditBar() {
         <input type="color" class="rb-swatch" style="padding:0;border:1px solid #475569;cursor:pointer;" value="#fef08a"
             onmousedown="event.stopPropagation();" onchange="applyFormat('hiliteColor',this.value)" title="自訂底色">
         <span class="rb-sep"></span>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('justifyLeft')" title="靠左">◀≡</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('justifyCenter')" title="置中">≡</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('justifyRight')" title="靠右">≡▶</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('justifyFull')" title="兩端對齊">≡≡</button>
+        <span class="rb-sep"></span>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('insertUnorderedList')" title="項目清單">• 清單</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('insertOrderedList')" title="編號清單">1. 清單</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('outdent')" title="減少縮排">⇤</button>
+        <button class="rb" onmousedown="event.preventDefault();applyFormat('indent')" title="增加縮排">⇥</button>
+        <span class="rb-sep"></span>
         <button class="rb" onmousedown="event.preventDefault();insertLink()" title="連結">連結</button>
+        <button class="rb" onmousedown="event.preventDefault();openStratLinkPicker(this)" title="將框選文字連結到攻略文章" style="white-space:nowrap;">🔗 連結攻略</button>
         <label class="rb" style="cursor:pointer;" title="插入圖片">圖片 <input type="file" accept="image/*" style="display:none" onchange="insertEditableImage(this)" contenteditable="false"></label>
         <button class="rb" onmousedown="event.preventDefault();insertTip()" title="小提醒">提醒</button>
         <button class="rb" onmousedown="event.preventDefault();insertNotice()" title="注意">注意</button>
@@ -1155,6 +1375,9 @@ function _createDraggableImage(src, name) {
     imgToolbar.className = 'img-toolbar';
     imgToolbar.setAttribute('contenteditable', 'false');
     imgToolbar.innerHTML = `
+        <button class="rb" style="font-size:10px;padding:2px 5px;" onmousedown="event.preventDefault();moveImgUp(this)"   title="上移">▲</button>
+        <button class="rb" style="font-size:10px;padding:2px 5px;" onmousedown="event.preventDefault();moveImgDown(this)" title="下移">▼</button>
+        <span class="rb-sep"></span>
         <button class="rb" style="font-size:10px;padding:2px 5px;" onmousedown="event.preventDefault();setImgAlign(this,'left')"   title="靠左">◀</button>
         <button class="rb" style="font-size:10px;padding:2px 5px;" onmousedown="event.preventDefault();setImgAlign(this,'center')" title="置中">■</button>
         <button class="rb" style="font-size:10px;padding:2px 5px;" onmousedown="event.preventDefault();setImgAlign(this,'right')"  title="靠右">▶</button>
@@ -1239,6 +1462,20 @@ function _setupImgDropTargets() {
             window._dragImgEl = null;
         });
     });
+}
+
+function moveImgUp(btn) {
+    const wrapper = btn.closest('.drag-img');
+    if (!wrapper) return;
+    const prev = wrapper.previousElementSibling;
+    if (prev) wrapper.parentNode.insertBefore(wrapper, prev);
+}
+
+function moveImgDown(btn) {
+    const wrapper = btn.closest('.drag-img');
+    if (!wrapper) return;
+    const next = wrapper.nextElementSibling;
+    if (next) wrapper.parentNode.insertBefore(next, wrapper);
 }
 
 function setImgAlign(btn, align) {
@@ -1380,6 +1617,7 @@ function _buildAdEditBar(adId) {
         </button>
         <button class="rb" onmousedown="event.preventDefault();applyFormat('insertUnorderedList')" title="清單">≡</button>
         <button class="rb" onmousedown="event.preventDefault();insertLink()" title="連結">🔗</button>
+        <button class="rb" onmousedown="event.preventDefault();openStratLinkPicker(this)" title="將框選文字連結到攻略文章">🔗攻略</button>
         <span class="rb-sep"></span>
         <label class="rb" style="cursor:pointer;" title="插入圖片">
             🖼 <input type="file" accept="image/*" style="display:none" onchange="insertEditableImage(this)" contenteditable="false">
@@ -1614,7 +1852,7 @@ function _buildCacheBusterVer() {
     return `${parts.year}${parts.month}${parts.day}${parts.hour}${parts.minute}`;
 }
 
-// 將檔案內所有 ?v=202607091833 統一替換為新版本號
+// 將檔案內所有 ?v=202607281406 統一替換為新版本號
 // 比對範圍：?v= 後面非空白且非引號、結尾或 & 之前的字元
 function _stampCacheBuster(text, ver) {
     return text.replace(/\?v=[\w.\-]+/g, '?v=' + ver);
@@ -1729,7 +1967,7 @@ function executeFinalSave() {
             /const initial = \[([\s\S]*?)\];(\s*window\.scData = initial;)/,
             'const initial = ' + latestScData + ';$2'
         );
-        // ── Cache Busting：將 HTML 內所有 ?v=202607091833 替換成本次建置版本號 ──
+        // ── Cache Busting：將 HTML 內所有 ?v=202607281406 替換成本次建置版本號 ──
         exportedHtml = _stampCacheBuster(exportedHtml, _buildVer);
         Object.assign(document.createElement('a'), {
             href     : URL.createObjectURL(new Blob([exportedHtml], { type: 'text/html' })),
@@ -1741,7 +1979,7 @@ function executeFinalSave() {
         fetch('cobblemon.js?v=' + Date.now())
             .then(r => r.text())
             .then(src => {
-                // ── Cache Busting：將 JS 內所有 ?v=202607091833 替換成本次建置版本號 ──
+                // ── Cache Busting：將 JS 內所有 ?v=202607281406 替換成本次建置版本號 ──
                 src = _stampCacheBuster(src, _buildVer);
                 Object.assign(document.createElement('a'), {
                     href     : URL.createObjectURL(new Blob([src], { type: 'application/javascript' })),
@@ -1869,6 +2107,7 @@ document.addEventListener('paste', function(e) {
 
 document.addEventListener('selectionchange', () => {
     if (!document.body.classList.contains('editing-active')) return;
+    _rememberSelection();
     updateFormatState();
     const sel = window.getSelection();
     const ft  = document.getElementById('float-toolbar');
@@ -1899,7 +2138,7 @@ window.addEventListener('keydown', e => {
         e.preventDefault();
         toggleEditMode(true);
     }
-    if (e.key === 'Escape') closeStratModal();
+    if (e.key === 'Escape' && !document.body.classList.contains('editing-active')) closeStratModal();
 });
 
 window.addEventListener('scroll', () => {
@@ -1950,7 +2189,7 @@ window.onload = async function () {
 
     if (!data) {
         try {
-            const res = await fetch('cobblemon_data.json?v=202607091833');
+            const res = await fetch('cobblemon_data.json?v=202607281406');
             if (res.ok) data = await res.json();
         } catch (e) {
             console.error('[Cobblemon] JSON 載入失敗：', e);
